@@ -1,0 +1,139 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "articraft"
+dynamic = ["version"]
+description = "A small reference agent for generating articulated build123d objects."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Matthew Zhou" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = ["build123d", "agent", "cad", "articulation", "usd"]
+dependencies = [
+    "anthropic>=0.119.0",
+    "build123d>=0.11.0",
+    "google-genai>=2.14.0",
+    "httpx>=0.28.0",
+    "libigl>=2.6.2,<2.7",
+    "manifold3d>=3.3.2",
+    "numpy>=2.3.1,<3",
+    "pillow>=12.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.14.2",
+    "python-fcl>=0.7.0.11",
+    "rich>=13.0.0",
+    # Rotation.as_quat(scalar_first=) arrived in 1.14.
+    "scipy>=1.14",
+    "trimesh>=4.11.3",
+    "typer>=0.12.0",
+    # 26.8 fails to publish the temporary USDZ on macOS arm64.
+    "usd-core>=26.5,<26.8",
+    "websockets>=15.0.0",
+    "xatlas>=0.0.11",
+]
+
+[project.urls]
+Repository = "https://github.com/mattzh72/articraft"
+Issues = "https://github.com/mattzh72/articraft/issues"
+
+[dependency-groups]
+sim = [
+    # MjSpec, which the translator builds models with, is stable since 3.3.
+    "mujoco>=3.3",
+]
+dev = [
+    "basedpyright>=1.39.9",
+    "pyyaml>=6.0",
+    "pytest>=8.0.0",
+    "ruff>=0.11.0",
+]
+
+[project.scripts]
+articraft = "articraft.app:main"
+
+[tool.uv]
+required-version = ">=0.9.0"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "articraft.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["articraft*"]
+
+[tool.setuptools.package-data]
+articraft = [
+    "py.typed",
+    "viewer.html",
+    "prompts/*.md",
+    "sdk/docs/common/*.md",
+    "sdk/docs/examples/*.py",
+    "sdk/docs/mesh/*.md",
+    "sdk/docs/build123d/*.md",
+    "sdk/docs/build123d/assets/*",
+    "sdk/docs/build123d/assets/*/*",
+    "sdk/docs/build123d/examples/*",
+    "sdk/docs/build123d/media/*",
+    "sdk/docs/build123d/snippets/*",
+]
+
+[tool.basedpyright]
+include = ["src", "tests", "scripts", "benchmarks"]
+# The vendored build123d doc snippets are agent-facing content, not package code.
+exclude = ["src/articraft/sdk/docs"]
+typeCheckingMode = "standard"
+# CompilePayload exists to catch mistyped keys, not to prove every optional key
+# is present at each read. The latter would need a guard at ~20 call sites that
+# already know the key is there. Unknown keys are still an error.
+reportTypedDictNotRequiredAccess = false
+
+# Test modules import the test environment as `import harness` (pytest prepend
+# mode puts tests/ on sys.path); teach the type checker the same root.
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+
+# The tape CLI also imports the test environment from tests/.
+[[tool.basedpyright.executionEnvironments]]
+root = "scripts"
+extraPaths = ["tests"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not volume'"
+markers = [
+    "volume: opt-in load/concurrency stress tests (run with `-m volume`)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "src/articraft/sdk/docs/build123d/assets",
+    "src/articraft/sdk/docs/build123d/examples",
+    "src/articraft/sdk/docs/build123d/snippets",
+]
+
+[tool.ruff.lint]
+select = ["B", "C4", "E", "F", "I", "PERF", "PLE", "PLW", "PTH", "RUF", "SIM", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# typer builds CLI options by calling typer.Option in parameter defaults.
+"src/articraft/app.py" = ["B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

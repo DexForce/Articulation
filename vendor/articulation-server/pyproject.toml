@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "articulation-server"
+version = "0.2.0"
+description = "Queued HTTP service and client for Articraft generation."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "flask>=3.0,<4",
+    "requests>=2.31,<3",
+    "waitress>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "ruff>=0.11",
+]
+
+[project.scripts]
+articulation-server = "articulation_server.api:main"
+articulation-client = "articulation_server.client:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".conda"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "SIM", "UP"]
