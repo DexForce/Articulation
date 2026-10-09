@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -14,13 +18,16 @@ from articraft.errors import ModelError
 from articraft.settings import Settings, get_settings
 
 
-class CompatibleModel:
-    supports_images = True
-
+class _CompatibleHTTPClient:
     def __init__(
-        self, settings: Settings | None = None, *, client: httpx.AsyncClient | None = None
+        self,
+        settings: Settings,
+        endpoint: str,
+        *,
+        client: httpx.AsyncClient | None = None,
+        diagnostics_dir: Path | None = None,
     ):
-        self.config = settings or get_settings()
+        self.config = settings
         if not (self.config.openai_api_key or "").strip():
             raise ModelError("Set OPENAI_API_KEY for the compatible API backend")
         base = self.config.openai_base_url.rstrip("/")
@@ -32,8 +39,109 @@ class CompatibleModel:
             or parsed.password
         ):
             raise ModelError("Compatible API base URL must be an HTTP(S) URL without credentials")
-        self._url = base + "/chat/completions"
+        path = parsed.path.rstrip("/")
+        if not path.endswith("/" + endpoint):
+            path += "/" + endpoint
+        self._url = parsed._replace(path=path).geturl()
         self._client = client
+        self._diagnostics_dir = diagnostics_dir
+
+    async def send(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                proxy=self.config.compatible_proxy_url or None,
+                trust_env=False,
+                follow_redirects=False,
+            )
+        call_id = uuid.uuid4().hex
+        for attempt in range(self.config.openai_max_attempts):
+            started = time.monotonic()
+            metadata = {
+                "started_at": datetime.now(UTC).isoformat(),
+                "attempt": attempt + 1,
+                "model": request.get("model"),
+                "reasoning_effort": (request.get("reasoning") or {}).get("effort"),
+                "store": request.get("store"),
+                "tools_count": len(request.get("tools") or []),
+                "endpoint": urlsplit(self._url)._replace(query="", fragment="").geturl(),
+            }
+            try:
+                try:
+                    response = await self._client.post(
+                        self._url,
+                        json=request,
+                        headers={"Authorization": f"Bearer {self.config.openai_api_key}"},
+                        timeout=self.config.openai_request_timeout_seconds,
+                    )
+                except (httpx.TimeoutException, httpx.TransportError) as exc:
+                    metadata["error_type"] = type(exc).__name__
+                    if attempt + 1 == self.config.openai_max_attempts:
+                        raise ModelError(
+                            f"Compatible API transport failed ({type(exc).__name__})"
+                        ) from exc
+                else:
+                    metadata["http_status"] = response.status_code
+                    if response.status_code < 400:
+                        try:
+                            payload = response.json()
+                        except ValueError as exc:
+                            raise ModelError("Compatible API response is not JSON") from exc
+                        if not isinstance(payload, dict) or payload.get("error"):
+                            raise ModelError(
+                                "Compatible API returned an invalid response or provider error"
+                            )
+                        metadata["response_status"] = payload.get("status")
+                        metadata["returned_model"] = payload.get("model")
+                        reasoning = payload.get("reasoning")
+                        metadata["returned_reasoning_effort"] = (
+                            reasoning.get("effort") if isinstance(reasoning, dict) else None
+                        )
+                        usage = payload.get("usage")
+                        metadata["usage"] = {
+                            k: v
+                            for k, v in (usage if isinstance(usage, dict) else {}).items()
+                            if isinstance(v, int)
+                        }
+                        return payload
+                    if (
+                        response.status_code not in {408, 429, 500, 502, 503, 504}
+                        or attempt + 1 == self.config.openai_max_attempts
+                    ):
+                        raise ModelError(
+                            f"Compatible API request failed (HTTP {response.status_code})"
+                        )
+            finally:
+                if self._diagnostics_dir is not None:
+                    self._diagnostics_dir.mkdir(parents=True, exist_ok=True)
+                    metadata.update(
+                        {
+                            "finished_at": datetime.now(UTC).isoformat(),
+                            "duration_seconds": time.monotonic() - started,
+                        }
+                    )
+                    (self._diagnostics_dir / f"{call_id}-{attempt + 1}.json").write_text(
+                        json.dumps(metadata, indent=2).replace(
+                            self.config.openai_api_key, "[REDACTED]"
+                        )
+                        + "\n"
+                    )
+            await asyncio.sleep(min(2**attempt, 20))
+        raise AssertionError("retry loop did not return or raise")
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+
+class CompatibleModel:
+    supports_images = True
+
+    def __init__(
+        self, settings: Settings | None = None, *, client: httpx.AsyncClient | None = None
+    ):
+        self.config = settings or get_settings()
+        self._http = _CompatibleHTTPClient(self.config, "chat/completions", client=client)
 
     @property
     def context_window_tokens(self) -> int:
@@ -94,49 +202,10 @@ class CompatibleModel:
             raise ModelError("Compatible API returned malformed text or tool output") from exc
 
     async def _send(self, request: dict[str, Any]) -> dict[str, Any]:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                proxy=self.config.compatible_proxy_url or None,
-                trust_env=False,
-                follow_redirects=False,
-            )
-        for attempt in range(self.config.openai_max_attempts):
-            try:
-                response = await self._client.post(
-                    self._url,
-                    json=request,
-                    headers={"Authorization": f"Bearer {self.config.openai_api_key}"},
-                    timeout=self.config.openai_request_timeout_seconds,
-                )
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                if attempt + 1 == self.config.openai_max_attempts:
-                    raise ModelError(
-                        f"Compatible API transport failed ({type(exc).__name__})"
-                    ) from exc
-            else:
-                if response.status_code < 400:
-                    try:
-                        payload = response.json()
-                    except ValueError as exc:
-                        raise ModelError("Compatible API response is not JSON") from exc
-                    if not isinstance(payload, dict) or payload.get("error"):
-                        raise ModelError(
-                            "Compatible API returned an invalid response or provider error"
-                        )
-                    return payload
-                if (
-                    response.status_code not in {408, 429, 500, 502, 503, 504}
-                    or attempt + 1 == self.config.openai_max_attempts
-                ):
-                    # Never put raw provider responses or credentials in task errors.
-                    raise ModelError(f"Compatible API request failed (HTTP {response.status_code})")
-            await asyncio.sleep(min(2**attempt, 20))
-        raise AssertionError("retry loop did not return or raise")
+        return await self._http.send(request)
 
     async def close(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        await self._http.close()
 
 
 def _content(content: Any) -> list[dict[str, Any]]:

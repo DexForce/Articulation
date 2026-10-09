@@ -10,6 +10,7 @@ from articraft.agent.provider.codex_cli import (
     context_window_tokens_for as codex_context_window_tokens_for,
 )
 from articraft.agent.provider.compatible import CompatibleModel
+from articraft.agent.provider.compatible_responses import CompatibleResponsesModel
 from articraft.agent.provider.gemini import GeminiModel
 from articraft.agent.provider.gemini import (
     context_window_tokens_for as gemini_context_window_tokens_for,
@@ -23,8 +24,10 @@ from articraft.settings import Settings
 
 
 def create_model(settings: Settings) -> Model:
-    # Local adaptation: use the configured Chat Completions endpoint, not Responses.
+    # Local adaptation: select the configured HTTP protocol without changing the agent loop.
     if settings.provider == "compatible-api":
+        if settings.compatible_api_mode == "responses":
+            return CompatibleResponsesModel(settings)
         return CompatibleModel(settings)
     if settings.provider == "codex-cli":
         return CodexCliModel(settings)

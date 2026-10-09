@@ -15,6 +15,27 @@ from dotenv import dotenv_values
 ROOT = Path(__file__).resolve().parent
 DEFAULT_ENV = ROOT.parent / "baseline" / "embodichain" / "gen_sim" / ".env"
 PORTS = {"api": 18688, "codex": 18689}
+# Verified GPU08 process profile; local credentials, CLI and proxy stay independent.
+CODEX_RUNTIME_PROFILE = {
+    "ARTICRAFT_CODEX_MODEL": "gpt-5.6-sol",
+    "ARTICRAFT_MODEL": "gpt-5.6-sol",
+    "ARTICRAFT_REASONING_EFFORT": "low",
+    "ARTICRAFT_CODEX_SERVICE_TIER": "default",
+    "ARTICRAFT_CODEX_CLI_TRANSPORT_MODE": "https",
+    "ARTICRAFT_CODEX_CLI_FORCE_HTTPS": "true",
+    "ARTICRAFT_CODEX_CLI_RESPONSE_SHADOW_SECONDS": "120",
+    "ARTICRAFT_CODEX_CLI_RESPONSE_STALL_SECONDS": "180",
+    "ARTICRAFT_CODEX_CLI_RECONNECT_STALL_SECONDS": "25",
+    "ARTICRAFT_CODEX_CLI_MAX_ATTEMPTS": "3",
+    "ARTICRAFT_CODEX_CLI_TIMEOUT_SECONDS": "1800",
+    "ARTICRAFT_CODEX_CLI_RECOVERY_BUDGET_SECONDS": "600",
+    "ARTICRAFT_CODEX_CLI_RETRY_SESSION_MODE": "resume",
+    "ARTICRAFT_CODEX_CLI_RETRY_INVALID_RESPONSE": "true",
+    "ARTICRAFT_MAX_TURNS": "100",
+    "ARTICRAFT_COMPILE_TIMEOUT_SECONDS": "900",
+    "ARTICULATION_JOB_TIMEOUT_SECONDS": "7200",
+    "ARTICULATION_CONCURRENCY": "1",
+}
 
 
 def environment(
@@ -22,9 +43,16 @@ def environment(
     *,
     env_file: Path = DEFAULT_ENV,
     model: str | None = None,
+    effort: str | None = None,
+    api_mode: str = "chat",
+    fast: bool = False,
     port: int | None = None,
     inherited: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    if fast and backend != "codex":
+        raise ValueError("Fast requires the Codex backend")
+    if backend == "api" and effort is not None and api_mode != "responses":
+        raise ValueError("Explicit API reasoning effort requires Responses mode")
     env = dict(os.environ if inherited is None else inherited)
     env.update(
         {
@@ -55,21 +83,26 @@ def environment(
                 "OPENAI_BASE_URL": values["OPENAI_BASE_URL"],
                 "ARTICRAFT_MODEL": model or values["OPENAI_MODEL"],
                 "ARTICRAFT_PROVIDER": "compatible-api",
+                "ARTICRAFT_COMPATIBLE_API_MODE": api_mode,
                 "ARTICRAFT_COMPATIBLE_PROXY_URL": values.get("EMBODICHAIN_LLM_PROXY") or "",
                 "ARTICRAFT_OPENAI_MAX_ATTEMPTS": values.get("OPENAI_MAX_ATTEMPTS") or "4",
             }
         )
+        if api_mode == "responses":
+            env["ARTICRAFT_REASONING_EFFORT"] = effort or "low"
         env.setdefault("ARTICRAFT_OPENAI_REQUEST_TIMEOUT_SECONDS", "300")
     elif backend == "codex":
         env.pop("OPENAI_API_KEY", None)
         env.pop("CODEX_API_KEY", None)
         env.pop("ARTICRAFT_MODEL", None)
+        env.update(CODEX_RUNTIME_PROFILE)
         env.update(
             {
                 "ARTICRAFT_PROVIDER": "codex-cli",
-                "ARTICRAFT_CODEX_MODEL": model or "codex-cli-default",
-                "ARTICRAFT_MODEL": model or "codex-cli-default",
-                "ARTICRAFT_REASONING_EFFORT": "xhigh",
+                "ARTICRAFT_CODEX_MODEL": model or "gpt-5.6-sol",
+                "ARTICRAFT_MODEL": model or "gpt-5.6-sol",
+                "ARTICRAFT_REASONING_EFFORT": effort or "low",
+                "ARTICRAFT_CODEX_SERVICE_TIER": "fast" if fast else "default",
                 "ARTICRAFT_CODEX_CLI_BIN": shutil.which("codex") or "codex",
                 "ARTICRAFT_CODEX_CLI_ROTATE_ROUTE_ON_TRANSPORT_RETRY": "false",
                 "ARTICRAFT_CODEX_CLI_ROUTE_CONTROLLER_URL": "",
@@ -89,6 +122,9 @@ def main() -> None:
         command.add_argument("--backend", choices=PORTS, default="api")
         command.add_argument("--env-file", type=Path, default=DEFAULT_ENV)
         command.add_argument("--model")
+        command.add_argument("--effort", choices=("low", "medium", "high", "xhigh"))
+        command.add_argument("--api-mode", choices=("chat", "responses"), default="chat")
+        command.add_argument("--fast", action="store_true")
         if name == "serve":
             command.add_argument("--port", type=int)
         if name == "generate":
@@ -118,7 +154,13 @@ def main() -> None:
                 sys.executable, [sys.executable, str(ROOT / "scripts" / "offline_smoke.py")], env
             )
         env = environment(
-            args.backend, env_file=args.env_file, model=args.model, port=getattr(args, "port", None)
+            args.backend,
+            env_file=args.env_file,
+            model=args.model,
+            effort=args.effort,
+            api_mode=args.api_mode,
+            fast=args.fast,
+            port=getattr(args, "port", None),
         )
         if args.command == "doctor":
             command = [
@@ -154,6 +196,9 @@ def main() -> None:
                     {
                         "backend": args.backend,
                         "model": env.get("ARTICRAFT_MODEL") or env["ARTICRAFT_CODEX_MODEL"],
+                        "reasoning_effort": env.get("ARTICRAFT_REASONING_EFFORT"),
+                        "api_mode": env.get("ARTICRAFT_COMPATIBLE_API_MODE"),
+                        "service_tier": env.get("ARTICRAFT_CODEX_SERVICE_TIER"),
                         "output_root": env["ARTICULATION_OUTPUT_ROOT"],
                         "model_request_sent": False,
                     },

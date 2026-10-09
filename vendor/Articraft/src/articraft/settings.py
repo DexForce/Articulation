@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # Local adaptation: Chat Completions endpoints are separate from OpenAI Responses.
     openai_base_url: str = Field(default="", validation_alias="OPENAI_BASE_URL")
     compatible_proxy_url: str = Field(default="", validation_alias="ARTICRAFT_COMPATIBLE_PROXY_URL")
+    compatible_api_mode: Literal["chat", "responses"] = Field(
+        default="chat", validation_alias="ARTICRAFT_COMPATIBLE_API_MODE"
+    )
     compatible_max_output_tokens: int = Field(
         default=16384, ge=1, validation_alias="ARTICRAFT_COMPATIBLE_MAX_OUTPUT_TOKENS"
     )
@@ -139,6 +142,10 @@ class Settings(BaseSettings):
     codex_model: str = Field(
         default=DEFAULT_CODEX_MODEL,
         validation_alias="ARTICRAFT_CODEX_MODEL",
+    )
+    # Local adaptation: explicitly forward Fast despite --ignore-user-config.
+    codex_service_tier: Literal["default", "fast"] = Field(
+        default="default", validation_alias="ARTICRAFT_CODEX_SERVICE_TIER"
     )
     codex_cli_bin: str = Field(
         default="codex",

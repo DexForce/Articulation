@@ -7,6 +7,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
 from articraft.agent.provider.codex_cli import CodexCliExecResult, CodexCliModel
 from articraft.settings import Settings
 from articulation_server.api import create_app
@@ -16,7 +17,8 @@ from pxr import Usd, UsdPhysics
 from local import ROOT, environment
 
 
-def test_real_worker_agent_and_compile_with_loopback_api(tmp_path, monkeypatch):
+@pytest.mark.parametrize("api_mode", ["chat", "responses"])
+def test_real_worker_agent_and_compile_with_loopback_api(tmp_path, monkeypatch, api_mode):
     source = (ROOT / "examples" / "offline_articulation.py").read_text()
     requests = []
 
@@ -27,8 +29,14 @@ def test_real_worker_agent_and_compile_with_loopback_api(tmp_path, monkeypatch):
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert self.headers["Authorization"] == "Bearer offline-dummy"
-            assert self.path == "/v1/chat/completions"
+            assert self.path == (
+                "/v1/responses" if api_mode == "responses" else "/v1/chat/completions"
+            )
             assert request["model"] == "offline-fixture"
+            if api_mode == "responses":
+                assert request["reasoning"] == {"effort": "low"}
+                assert request["store"] is False
+                assert "previous_response_id" not in request
             requests.append(request)
             turn = len(requests)
             message = {"content": "", "reasoning_content": "offline-checkpoint"}
@@ -43,18 +51,47 @@ def test_real_worker_agent_and_compile_with_loopback_api(tmp_path, monkeypatch):
                     }
                 ]
             else:
-                assert request["messages"][-1]["role"] == "tool"
-                assert (
-                    json.loads(request["messages"][-1]["content"])["result"]["status"] == "success"
-                )
+                if api_mode == "responses":
+                    assert request["input"][-1]["type"] == "function_call_output"
+                    last_output = request["input"][-1]["output"]
+                else:
+                    assert request["messages"][-1]["role"] == "tool"
+                    last_output = request["messages"][-1]["content"]
+                assert json.loads(last_output)["result"]["status"] == "success"
                 message["content"] = "Offline fixture compiled successfully."
-            response = json.dumps(
-                {
-                    "choices": [
-                        {"finish_reason": "tool_calls" if turn < 3 else "stop", "message": message}
+            if api_mode == "responses":
+                output = (
+                    [
+                        {
+                            "type": "function_call",
+                            "call_id": f"call_{turn}",
+                            "name": name,
+                            "arguments": json.dumps(arguments),
+                        }
                     ]
-                }
-            ).encode()
+                    if turn < 3
+                    else [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": message["content"]}],
+                        }
+                    ]
+                )
+                response = json.dumps(
+                    {"id": f"response_{turn}", "status": "completed", "output": output}
+                ).encode()
+            else:
+                response = json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "finish_reason": "tool_calls" if turn < 3 else "stop",
+                                "message": message,
+                            }
+                        ]
+                    }
+                ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(response)))
@@ -68,7 +105,7 @@ def test_real_worker_agent_and_compile_with_loopback_api(tmp_path, monkeypatch):
     env_file.write_text(
         f'OPENAI_API_KEY="offline-dummy"\nOPENAI_BASE_URL="http://127.0.0.1:{server.server_port}/v1"\nOPENAI_MODEL="offline-fixture"\n'
     )
-    env = environment("api", env_file=env_file)
+    env = environment("api", env_file=env_file, api_mode=api_mode)
     env["ARTICULATION_OUTPUT_ROOT"] = str(tmp_path / "output")
     env["ARTICRAFT_OUTPUT_DIR"] = str(tmp_path / "output" / "runs")
     env["ARTICRAFT_OPENAI_MAX_ATTEMPTS"] = "1"
@@ -101,7 +138,10 @@ def test_real_worker_agent_and_compile_with_loopback_api(tmp_path, monkeypatch):
         assert stage is not None
         assert sum(p.HasAPI(UsdPhysics.ArticulationRootAPI) for p in stage.Traverse()) == 1
         assert len(requests) == 3
-        assert requests[1]["messages"][-2]["reasoning_content"] == "offline-checkpoint"
+        if api_mode == "chat":
+            assert requests[1]["messages"][-2]["reasoning_content"] == "offline-checkpoint"
+        else:
+            assert any(item.get("type") == "function_call" for item in requests[1]["input"])
     finally:
         manager.shutdown()
         server.shutdown()

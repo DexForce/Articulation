@@ -305,6 +305,9 @@ class CodexCliModel:
                 bool(model_errors)
                 and all(_is_transient_transport_error(error) for error in model_errors)
                 and _last_event_type(result.stdout) == "turn.completed"
+                and not any(
+                    _event_type(line).endswith(".failed") for line in result.stdout.splitlines()
+                )
             )
             if model_errors and not recovered_transient_errors:
                 _annotate_query_outcome(
@@ -489,6 +492,7 @@ class CodexCliModel:
         if ephemeral:
             command.append("--ephemeral")
         command.extend(self._transport_arguments())
+        command.extend(self._service_tier_arguments())
         if self.config.codex_model != DEFAULT_CODEX_MODEL:
             command.extend(["--model", self.config.codex_model])
         for image in images:
@@ -520,6 +524,7 @@ class CodexCliModel:
             str(output_path),
         ]
         command.extend(self._transport_arguments())
+        command.extend(self._service_tier_arguments())
         if self.config.codex_model != DEFAULT_CODEX_MODEL:
             command.extend(["--model", self.config.codex_model])
         for image in images:
@@ -529,6 +534,12 @@ class CodexCliModel:
             command.extend(["-c", f'model_reasoning_effort="{effort}"'])
         command.extend([session_id, "-"])
         return command
+
+    def _service_tier_arguments(self) -> list[str]:
+        # Local adaptation: resumes must retain the same requested service tier.
+        if self.config.codex_service_tier != "fast":
+            return ["-c", 'service_tier="default"', "-c", "features.fast_mode=false"]
+        return ["-c", 'service_tier="fast"', "-c", "features.fast_mode=true"]
 
     def _transport_arguments(self) -> list[str]:
         if self.config.codex_cli_transport_mode == "websocket":
@@ -1408,7 +1419,9 @@ def _transient_transport_error(errors: list[str]) -> str:
 
 def _is_transient_transport_error(error: str) -> bool:
     lowered = error.lower()
-    return any(marker in lowered for marker in _TRANSIENT_TRANSPORT_MARKERS)
+    # CLI 0.159 reports retryable request timeouts without the older transport prefix.
+    reconnect_timeout = re.fullmatch(r"reconnecting\.\.\. \d+/\d+ \(request timed out\)", lowered)
+    return bool(reconnect_timeout) or any(marker in lowered for marker in _TRANSIENT_TRANSPORT_MARKERS)
 
 
 def _last_event_type(stdout: str) -> str:

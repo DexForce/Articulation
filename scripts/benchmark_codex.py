@@ -18,6 +18,7 @@ from PIL import Image
 from pxr import Usd, UsdGeom, UsdPhysics, UsdUtils
 
 ROOT = Path(__file__).resolve().parents[1]
+PORTS = {"api": 18688, "codex": 18689}
 DEFAULT_MANIFEST = (
     ROOT.parent / "baseline2/gym_project/articulation/benchmark/benchmark-manifest.json"
 )
@@ -166,6 +167,7 @@ def run_stats(run_dir: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--backend", choices=PORTS, default="codex")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--cases", nargs="+")
     parser.add_argument("--run", action="store_true")
@@ -190,14 +192,15 @@ def main() -> int:
                 "prompt_sha256": hashlib.sha256(case["prompt"].encode()).hexdigest(),
             }
         )
-    client = ArticulationClient("http://127.0.0.1:18689")
+    client = ArticulationClient(f"http://127.0.0.1:{PORTS[args.backend]}")
     try:
         health = client.health()
-        if health.get("provider") != "codex-cli" or not health.get("ok"):
-            raise RuntimeError(f"Local Codex backend is unavailable: {health}")
+        provider = "codex-cli" if args.backend == "codex" else "compatible-api"
+        if health.get("provider") != provider or not health.get("ok"):
+            raise RuntimeError(f"Local {args.backend} backend is unavailable: {health}")
         active = [
             p
-            for p in (ROOT / "outputs/codex/jobs").glob("*/job.json")
+            for p in (ROOT / "outputs" / args.backend / "jobs").glob("*/job.json")
             if json.loads(p.read_text()).get("status") not in {"succeeded", "failed", "cancelled"}
         ]
         if active:
@@ -212,7 +215,7 @@ def main() -> int:
             )
             return 0
         output = args.output or ROOT / "outputs/benchmarks" / datetime.now(UTC).strftime(
-            "codex-%Y%m%dT%H%M%SZ"
+            args.backend + "-%Y%m%dT%H%M%SZ"
         )
         output.mkdir(parents=True, exist_ok=False)
         (output / "images").mkdir()
@@ -222,8 +225,8 @@ def main() -> int:
             "seed_metadata": manifest["seed"],
             "inference_seed_controlled": False,
             "health_before": health,
-            "backend": "local-codex-login",
-            "reasoning_effort": codex_runtime_effort(),
+            "backend": "local-codex-login" if args.backend == "codex" else "local-api-key",
+            "reasoning_effort": backend_runtime_effort(args.backend),
             "continue_on_failure": args.continue_on_failure,
             "planned_cases": order,
             "results": [],
@@ -277,10 +280,10 @@ def main() -> int:
                         break
                     continue
                 job = json.loads(
-                    (ROOT / "outputs/codex/jobs" / request_id / "job.json").read_text()
+                    (ROOT / "outputs" / args.backend / "jobs" / request_id / "job.json").read_text()
                 )
                 original = Path(job["artifacts"]["usdc"])
-                run_dir = ROOT / "outputs/codex/runs" / task["result"]["run_id"]
+                run_dir = ROOT / "outputs" / args.backend / "runs" / task["result"]["run_id"]
                 validation = validate_usdc(artifact, case["expected"])
                 validation["download_hash_matches_server"] = sha256(original) == sha256(artifact)
                 write_json(directory / "validation.json", validation)
@@ -335,17 +338,17 @@ def main() -> int:
         client.close()
 
 
-def codex_runtime_effort() -> str:
-    pid = int((ROOT / ".runtime/codex.pid").read_text())
+def backend_runtime_effort(backend: str) -> str:
+    pid = int((ROOT / ".runtime" / f"{backend}.pid").read_text())
     process = Path(f"/proc/{pid}")
     if (process / "cwd").resolve() != ROOT:
-        raise RuntimeError("Codex service PID does not belong to this workspace")
+        raise RuntimeError("Service PID does not belong to this workspace")
     values = dict(
         entry.decode().split("=", 1)
         for entry in (process / "environ").read_bytes().split(b"\0")
         if b"=" in entry
     )
-    return values["ARTICRAFT_REASONING_EFFORT"]
+    return values.get("ARTICRAFT_REASONING_EFFORT", "provider-default")
 
 
 if __name__ == "__main__":
