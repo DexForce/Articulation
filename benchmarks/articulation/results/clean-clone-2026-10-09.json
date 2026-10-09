@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "tested_source_revision": "dadbe5ac4f272c0503a62129d0bb37d2ff1581ac",
+  "test_date": "2026-10-09",
+  "clone_source": "GitHub origin/main",
+  "platform": "Linux x86_64",
+  "python": "3.11.16",
+  "installation": {
+    "fresh_conda_and_venv": true,
+    "vendored_modules_from_clean_clone": true,
+    "offline_usdc_smoke": "passed",
+    "offline_tests_passed": 70,
+    "root_dotenv_default_responses_low_doctor": "passed"
+  },
+  "model": "openai/gpt-5.6-sol",
+  "reasoning_effort": "low",
+  "api_mode": "responses",
+  "gateway": "api.orcarouter.ai",
+  "independent_repetitions": 1,
+  "input_manifest": "benchmarks/articulation/manifest.json",
+  "input_manifest_sha256": "6692fa487043c169489273026b2065318ed56d0c0f50c59148d46da9dfb1ebbd",
+  "execution_order": [
+    "bell",
+    "switch",
+    "stapler",
+    "microwave"
+  ],
+  "completed": true,
+  "passed_cases": 4,
+  "cases": [
+    {
+      "case_id": "bell",
+      "status": "succeeded",
+      "static_acceptance": true,
+      "elapsed_seconds": 106.077,
+      "input_sha256": "89346eb5667cd64949c4a53a93c1ad3dcf0fd0e64138e42ca37464466325b2ae",
+      "prompt_sha256": "1f9ff432c417d9f94fda6267133679aa9d38a06b885e7c0e33bd333de8f89600",
+      "artifact_bytes": 192193,
+      "artifact_sha256": "90958d9b0b56812176bf7f45a46c5ec8363a9e35d51cd880dcb5adc1226faf37",
+      "joint_type_counts": {
+        "PhysicsPrismaticJoint": 1
+      },
+      "rigid_bodies": 2,
+      "articulation_roots": 1,
+      "mass_properties_complete": true,
+      "assistant_turns": 12,
+      "compile_calls": 2,
+      "compile_counts": {
+        "failures": 0,
+        "warnings": 0,
+        "notes": 3
+      },
+      "http_attempts": 12,
+      "http_retries": 0,
+      "http_status_counts": {
+        "200": 12
+      },
+      "all_returned_efforts_low": true
+    },
+    {
+      "case_id": "switch",
+      "status": "succeeded",
+      "static_acceptance": true,
+      "elapsed_seconds": 188.128,
+      "input_sha256": "da533daa1fad0334ecadc5ddf3ffa754dbbe00eca8cf930cbfd503382f5f6a7f",
+      "prompt_sha256": "c0f0df532b27c26e82b580688a2550c69ca4356da18a693a08bcda27e9931406",
+      "artifact_bytes": 96760,
+      "artifact_sha256": "831c2ad762ec8a9a25dc8c228ea60c215c0105c5c181ba120650b4e28cc256d9",
+      "joint_type_counts": {
+        "PhysicsRevoluteJoint": 1
+      },
+      "rigid_bodies": 2,
+      "articulation_roots": 1,
+      "mass_properties_complete": true,
+      "assistant_turns": 16,
+      "compile_calls": 2,
+      "compile_counts": {
+        "failures": 0,
+        "warnings": 0,
+        "notes": 4
+      },
+      "http_attempts": 16,
+      "http_retries": 0,
+      "http_status_counts": {
+        "200": 16
+      },
+      "all_returned_efforts_low": true
+    },
+    {
+      "case_id": "stapler",
+      "status": "succeeded",
+      "static_acceptance": true,
+      "elapsed_seconds": 274.177,
+      "input_sha256": "8dcaf732de9d9e5642b2cc1c38deedfc4fe37ee280b5252592cc36ff2d3114fd",
+      "prompt_sha256": "fd10eabeb1d505c5114d46476593c57835ee942d30f723dedf82581e56eb2e21",
+      "artifact_bytes": 75855,
+      "artifact_sha256": "d9054311d8f6e2f2fad63955ca959ece8727ca0941b20eda93cda042a375ff54",
+      "joint_type_counts": {
+        "PhysicsRevoluteJoint": 1
+      },
+      "rigid_bodies": 2,
+      "articulation_roots": 1,
+      "mass_properties_complete": true,
+      "assistant_turns": 23,
+      "compile_calls": 3,
+      "compile_counts": {
+        "failures": 0,
+        "warnings": 1,
+        "notes": 3
+      },
+      "http_attempts": 23,
+      "http_retries": 0,
+      "http_status_counts": {
+        "200": 23
+      },
+      "all_returned_efforts_low": true
+    },
+    {
+      "case_id": "microwave",
+      "status": "succeeded",
+      "static_acceptance": true,
+      "elapsed_seconds": 154.099,
+      "input_sha256": "d160e73737a7cacd3d194ba87cef3da441e34ffb047f031c1486abdf2af1be05",
+      "prompt_sha256": "8b23a7928726dafaf0f38b8379fdb9e0a96f9d4a695d836fc88809bd120d907d",
+      "artifact_bytes": 36208,
+      "artifact_sha256": "9703f337ce3deede07df44e9ee38df6394705f5f2f8a955b8b5ec200ed81eda1",
+      "joint_type_counts": {
+        "PhysicsPrismaticJoint": 3,
+        "PhysicsRevoluteJoint": 1
+      },
+      "rigid_bodies": 5,
+      "articulation_roots": 1,
+      "mass_properties_complete": true,
+      "assistant_turns": 14,
+      "compile_calls": 2,
+      "compile_counts": {
+        "failures": 0,
+        "warnings": 2,
+        "notes": 3
+      },
+      "http_attempts": 14,
+      "http_retries": 0,
+      "http_status_counts": {
+        "200": 14
+      },
+      "all_returned_efforts_low": true
+    }
+  ],
+  "elapsed_seconds": 722.512,
+  "inference_seed_controlled": false,
+  "physical_validation": "not_run",
+  "visual_semantic_validation": "human_review_required",
+  "billing_cost_verified": false,
+  "credentials_and_generated_assets_published": false
+}

@@ -40,6 +40,8 @@ python "scripts/bootstrap.py"
 
 `4/4` 表示这一轮完成了生成、下载和 USDC 静态验收，不保证每次成功、相同耗时、外观正确或动力学可用。输出和认证均不随 Git 分发。
 
+已完成一次从 GitHub 干净克隆、全新 Conda/venv 的验证：安装、离线 USDC smoke、70 项测试及真实 API 四例均通过，四例总耗时约 12 分 3 秒。详细边界及无凭证摘要见 [benchmark 验证记录](benchmarks/articulation/README.md#干净克隆验证)。
+
 ## 默认配置
 
 | 后端 | 地址 | 模型与认证 |
