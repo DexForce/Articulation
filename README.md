@@ -8,14 +8,46 @@
 
 启动和 `doctor` 不调用模型。`generate` 或向 `/generate_articulation` 提交有效请求才会调用模型，使用 API 额度或 Codex 配额。
 
+## 从干净克隆启动
+
+当前复现验证范围为 Linux x86_64、Python 3.11。不需要 baseline 工作区或 Codex 登录来运行 API 后端。安装 Conda 后，在新克隆中执行：
+
+```bash
+git clone "https://github.com/skywhite1024/AgenTable_Articulation.git"
+cd "AgenTable_Articulation"
+conda env create -f "environment.yml"
+conda activate agentable-articulation
+python "scripts/bootstrap.py"
+```
+
+`bootstrap.py` 创建独立 `.venv`，安装锁定依赖及本仓库的两份 vendor 包，并运行不调用模型的 CAD/USDC smoke。它拒绝覆盖已有 `.venv`。`environment.yml` 提供匹配的 Python 和 C++ 运行库，不修改系统库。
+
+按 `.env.example` 在仓库根目录配置自己的 `.env`，填写 key，并确认账号已授权该模型及 Responses、图片和工具调用。模板的 `OPENAI_API_MODE=responses` 和 `OPENAI_REASONING_EFFORT=low` 会被启动器读取；命令行参数可显式覆盖。
+
+```bash
+".venv/bin/python" "local.py" doctor --backend api
+".venv/bin/python" "local.py" serve --backend api
+```
+
+服务前台运行于 `127.0.0.1:18688`。在另一个终端预检或正式运行仓库自带四例：
+
+```bash
+".venv/bin/python" "local.py" benchmark --backend api
+".venv/bin/python" "local.py" benchmark --backend api --run --continue-on-failure
+```
+
+第一条不调用模型；第二条消耗 API 额度。四张原图、manifest 和验收条件均位于 `benchmarks/articulation/`。启动器会自动给子进程配置当前 Python 的 C++ 库路径，无须使用他人的绝对路径。服务已有其他端口时，启动和 benchmark 均可指定相同的 `--port`。
+
+`4/4` 表示这一轮完成了生成、下载和 USDC 静态验收，不保证每次成功、相同耗时、外观正确或动力学可用。输出和认证均不随 Git 分发。
+
 ## 默认配置
 
 | 后端 | 地址 | 模型与认证 |
 | --- | --- | --- |
-| `api` | `http://127.0.0.1:18688` | 启动时读取 baseline `.env` 的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` |
+| `api` | `http://127.0.0.1:18688` | 启动时读取所选 `.env` 的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` |
 | `codex` | `http://127.0.0.1:18689` | 本机 `codex`、现有登录，`gpt-5.6-sol / low / Standard` |
 
-默认配置文件：`/home/dex/EmbodiChain/baseline/embodichain/gen_sim/.env`。不复制 key，不复制服务器认证。`--env-file` 可指定其他文件，`--model` 可显式覆盖模型。API 代理只读取该文件的 `EMBODICHAIN_LLM_PROXY`；空值表示直连，不继承全局代理。Codex 使用本机网络环境，不操作云端 Mihomo 或自动切换节点。
+默认优先读取仓库根目录 `.env`；为兼容旧工作区，在它不存在时仍可回退到相邻 baseline 的 `.env`。干净克隆不需要这个回退路径。`--env-file` 可指定其他文件，`--model` 可显式覆盖模型。不复制服务器认证。API 代理只读取所选文件的 `EMBODICHAIN_LLM_PROXY`；空值表示直连，不继承全局代理。Codex 使用本机网络环境，不操作云端 Mihomo 或自动切换节点。
 
 API 默认使用 Chat Completions，保留 MiMo 的供应商默认 thinking，不把 `low` 自动映射给 MiMo。支持 Responses 的网关可显式使用 `--api-mode responses --effort low`；模型 ID、地址和 key 仍读取同一个外部 `.env`。已配置完整 endpoint 时不重复追加路径。正在运行的服务不会自动重读 `.env`。
 
@@ -90,7 +122,7 @@ HTTP 协议保留：`GET /health`、`POST /generate_articulation`（JSON prompt 
 
 ```bash
 ".venv/bin/python" "local.py" smoke
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" -m pytest -q
+LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ".venv/bin/python" -m pytest -q
 ```
 
 `smoke` 使用固定 CAD 示例，不发送模型请求，验证真实编译、USDZ 转 USDC、二进制格式、关节与刚体结构、离线 HTTP 排队和下载一致性。它不验证真实模型生成、真实代理链路、动力学或操作任务成功率。
@@ -104,28 +136,28 @@ LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python
 回归覆盖已保存的 medium/Stapler 失败回合的精简记录、真实失败拒绝、resume 与 fresh 恢复预算，以及首轮/resume 的运行参数。可用安装的真实 CLI 对 loopback 假 API 核验请求参数，不使用真实模型或凭证：
 
 ```bash
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" -m scripts.probe_fast_tier --cloud-profile
+LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ".venv/bin/python" -m scripts.probe_fast_tier --cloud-profile
 ```
 
 应用到已启动的本地 Codex 服务时，可复用现有重启工具；它校验 PID、工作区和服务身份，并拒绝在任务活动时重启。以下命令不提交生成任务，也不修改 API 后端：
 
 ```bash
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" -c \
+LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ".venv/bin/python" -c \
   'import json; from scripts.compare_sol56 import restart; print(json.dumps(restart("low", service_tier="default", align_runtime=True), indent=2))'
 ```
 
 ### 历史图片 Benchmark
 
 ```bash
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" "scripts/benchmark_codex.py"
+".venv/bin/python" "local.py" benchmark --backend codex
 ```
 
-默认只预检，不调用模型。显式添加 `--run` 才会使用本机 Codex 配额，按原顺序运行 Bell、Switch、Stapler、Microwave；`--cases bell` 可只测 Bell。输入沿用 baseline2 的原始 manifest，校验图片哈希和尺寸，原图片及提示词不修改。
+默认只预检，不调用模型。显式添加 `--run` 才会使用本机 Codex 配额，按原顺序运行 Bell、Switch、Stapler、Microwave；`--cases bell` 可只测 Bell。默认输入为本仓库的 `benchmarks/articulation/manifest.json`，不依赖 baseline2；图片和提示词与历史输入一致，校验图片哈希和尺寸。`--manifest` 可显式覆盖。
 
 同一个驱动也支持 `--backend api`，使用 `127.0.0.1:18688` 和 `outputs/api/`，验收规则、输入及时间上限相同：
 
 ```bash
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" "scripts/benchmark_codex.py" --backend api --run --continue-on-failure
+".venv/bin/python" "local.py" benchmark --backend api --run --continue-on-failure
 ```
 
 API 与 Codex 的协议、输出预算和传输不同；跨后端结果不是严格单因素对照。网关费用不采用 SDK 内置的 OpenAI 静态价格表，`cost=0` 表示未核算，而不是免费。
@@ -137,7 +169,7 @@ API 与 Codex 的协议、输出预算和传输不同；跨后端结果不是严
 用户确认的 GPT-5.6-Sol 两组对照可使用以下命令复现；默认不执行，`--run` 会重启无活动任务的本地 Codex 服务并真实提交八例：
 
 ```bash
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" -m scripts.compare_sol56 --run
+LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ".venv/bin/python" -m scripts.compare_sol56 --run
 ```
 
 顺序为 `medium` 四例，再 `xhigh` 四例。只改变模型和思考强度，不调整代理、watchdog 或校验；完成后服务留在 `gpt-5.6-sol / xhigh`。
@@ -145,20 +177,12 @@ LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python
 GPT-6-Luna / xhigh / Fast 四例测试：
 
 ```bash
-LD_LIBRARY_PATH="/home/dex/miniconda3/envs/embodichain311/lib" ".venv/bin/python" -m scripts.benchmark_luna_fast --run
+LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ".venv/bin/python" -m scripts.benchmark_luna_fast --run
 ```
 
 历史 Luna 测试显式请求 Fast，当时没有恢复事件分类修复或 watchdog 对齐。脚本只调整模型、强度和 tier，其余参数继承运行中的服务；修复后的新运行与旧记录必须分开比较。每例独立提交一次，结束时服务留在此次试验配置；Sol 对照脚本会显式恢复 Standard tier，避免把 Fast 意外混入原对照。
 
-环境隔离于 `.venv`，不修改既有 Conda 环境。当前 Python 3.11 来自 `embodichain311`，因此该解释器仍是本地运行依赖。重建：
-
-```bash
-"/home/dex/miniconda3/envs/embodichain311/bin/python" -m venv ".venv"
-".venv/bin/python" -m pip install -r "requirements-cloud.lock" \
-  -e "vendor/Articraft" -e "vendor/articulation-server" "pytest==8.4.2" "ruff==0.16.10"
-```
-
-`local.py` 仅在子进程中注入 Conda C++ 库路径和本地配置，不修改 shell 配置。不要直接使用系统 Python 3.10 启动。
+依赖安装和离线编译检查使用上述 `environment.yml` 与 `scripts/bootstrap.py`，不依赖原开发者的 Conda 环境名或绝对路径。`local.py` 仅在子进程中注入当前 Python 的 C++ 库路径和本地配置，不修改 shell 配置。不要直接使用系统 Python 3.10 启动。
 
 ## 来源与改造
 

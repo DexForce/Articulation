@@ -1,0 +1,9 @@
+name: agentable-articulation
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11.16
+  - pip
+  - libgcc-ng=16.2.0
+  - libstdcxx-ng=16.2.0

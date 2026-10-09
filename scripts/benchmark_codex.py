@@ -19,9 +19,7 @@ from pxr import Usd, UsdGeom, UsdPhysics, UsdUtils
 
 ROOT = Path(__file__).resolve().parents[1]
 PORTS = {"api": 18688, "codex": 18689}
-DEFAULT_MANIFEST = (
-    ROOT.parent / "baseline2/gym_project/articulation/benchmark/benchmark-manifest.json"
-)
+DEFAULT_MANIFEST = ROOT / "benchmarks/articulation/manifest.json"
 
 
 def write_json(path: Path, value: object) -> None:
@@ -168,6 +166,7 @@ def run_stats(run_dir: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--backend", choices=PORTS, default="codex")
+    parser.add_argument("--port", type=int)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--cases", nargs="+")
     parser.add_argument("--run", action="store_true")
@@ -192,7 +191,10 @@ def main() -> int:
                 "prompt_sha256": hashlib.sha256(case["prompt"].encode()).hexdigest(),
             }
         )
-    client = ArticulationClient(f"http://127.0.0.1:{PORTS[args.backend]}")
+    port = PORTS[args.backend] if args.port is None else args.port
+    if not 1 <= port <= 65535:
+        raise ValueError("Port must be between 1 and 65535")
+    client = ArticulationClient(f"http://127.0.0.1:{port}")
     try:
         health = client.health()
         provider = "codex-cli" if args.backend == "codex" else "compatible-api"
@@ -339,7 +341,10 @@ def main() -> int:
 
 
 def backend_runtime_effort(backend: str) -> str:
-    pid = int((ROOT / ".runtime" / f"{backend}.pid").read_text())
+    pid_file = ROOT / ".runtime" / f"{backend}.pid"
+    if not pid_file.is_file():
+        return "unknown"
+    pid = int(pid_file.read_text())
     process = Path(f"/proc/{pid}")
     if (process / "cwd").resolve() != ROOT:
         raise RuntimeError("Service PID does not belong to this workspace")

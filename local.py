@@ -13,7 +13,15 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_ENV = ROOT.parent / "baseline" / "embodichain" / "gen_sim" / ".env"
+
+
+def select_env_file(root: Path) -> Path:
+    project = root / ".env"
+    legacy = root.parent / "baseline" / "embodichain" / "gen_sim" / ".env"
+    return project if project.is_file() or not legacy.is_file() else legacy
+
+
+DEFAULT_ENV = select_env_file(ROOT)
 PORTS = {"api": 18688, "codex": 18689}
 # Verified GPU08 process profile; local credentials, CLI and proxy stay independent.
 CODEX_RUNTIME_PROFILE = {
@@ -38,22 +46,28 @@ CODEX_RUNTIME_PROFILE = {
 }
 
 
+def runtime_environment(inherited: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ if inherited is None else inherited)
+    libraries = str(Path(sys.base_prefix) / "lib")
+    env["LD_LIBRARY_PATH"] = os.pathsep.join(filter(None, [libraries, env.get("LD_LIBRARY_PATH")]))
+    env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), env.get("PATH", os.defpath)])
+    return env
+
+
 def environment(
     backend: str,
     *,
     env_file: Path = DEFAULT_ENV,
     model: str | None = None,
     effort: str | None = None,
-    api_mode: str = "chat",
+    api_mode: str | None = None,
     fast: bool = False,
     port: int | None = None,
     inherited: dict[str, str] | None = None,
 ) -> dict[str, str]:
     if fast and backend != "codex":
         raise ValueError("Fast requires the Codex backend")
-    if backend == "api" and effort is not None and api_mode != "responses":
-        raise ValueError("Explicit API reasoning effort requires Responses mode")
-    env = dict(os.environ if inherited is None else inherited)
+    env = runtime_environment(inherited)
     env.update(
         {
             "ARTICULATION_HOST": "127.0.0.1",
@@ -66,14 +80,16 @@ def environment(
             "PYTHONUNBUFFERED": "1",
         }
     )
-    # The Conda interpreter provides newer C++ runtime libraries for CAD wheels.
-    libraries = str(Path(sys.base_prefix) / "lib")
-    env["LD_LIBRARY_PATH"] = os.pathsep.join(filter(None, [libraries, env.get("LD_LIBRARY_PATH")]))
-    env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), env.get("PATH", os.defpath)])
     if backend == "api":
         if not env_file.is_file():
             raise FileNotFoundError(f"API configuration file not found: {env_file}")
         values = dotenv_values(env_file, interpolate=False)
+        api_mode = api_mode or values.get("OPENAI_API_MODE") or "chat"
+        effort = effort or values.get("OPENAI_REASONING_EFFORT") or None
+        if api_mode not in {"chat", "responses"}:
+            raise ValueError("OPENAI_API_MODE must be chat or responses")
+        if effort is not None and api_mode != "responses":
+            raise ValueError("Explicit API reasoning effort requires Responses mode")
         for name in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"):
             if not (values.get(name) or "").strip():
                 raise ValueError(f"{name} is missing from {env_file}")
@@ -123,7 +139,7 @@ def main() -> None:
         command.add_argument("--env-file", type=Path, default=DEFAULT_ENV)
         command.add_argument("--model")
         command.add_argument("--effort", choices=("low", "medium", "high", "xhigh"))
-        command.add_argument("--api-mode", choices=("chat", "responses"), default="chat")
+        command.add_argument("--api-mode", choices=("chat", "responses"))
         command.add_argument("--fast", action="store_true")
         if name == "serve":
             command.add_argument("--port", type=int)
@@ -134,8 +150,32 @@ def main() -> None:
     client.add_argument("--backend", choices=PORTS, default="api")
     client.add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("smoke")
+    benchmark = sub.add_parser("benchmark")
+    benchmark.add_argument("--backend", choices=PORTS, default="api")
+    benchmark.add_argument("--port", type=int)
+    benchmark.add_argument("--manifest", type=Path)
+    benchmark.add_argument("--output", type=Path)
+    benchmark.add_argument("--cases", nargs="+")
+    benchmark.add_argument("--run", action="store_true")
+    benchmark.add_argument("--continue-on-failure", action="store_true")
     args = parser.parse_args()
     try:
+        if args.command == "benchmark":
+            command = [
+                sys.executable,
+                str(ROOT / "scripts/benchmark_codex.py"),
+                "--backend",
+                args.backend,
+            ]
+            for key in ("port", "manifest", "output"):
+                if getattr(args, key) is not None:
+                    command.extend(["--" + key, str(getattr(args, key))])
+            if args.cases:
+                command.extend(["--cases", *args.cases])
+            for key in ("run", "continue_on_failure"):
+                if getattr(args, key):
+                    command.append("--" + key.replace("_", "-"))
+            os.execve(sys.executable, command, runtime_environment())
         if args.command == "client":
             os.execv(
                 sys.executable,
@@ -149,7 +189,7 @@ def main() -> None:
                 ],
             )
         if args.command == "smoke":
-            env = environment("codex")
+            env = runtime_environment()
             os.execve(
                 sys.executable, [sys.executable, str(ROOT / "scripts" / "offline_smoke.py")], env
             )

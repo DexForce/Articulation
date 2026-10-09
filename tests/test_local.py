@@ -6,7 +6,65 @@ from articraft.agent.provider.codex_cli import CodexCliModel
 from articraft.settings import Settings
 from articulation_server.config import ServerConfig
 
-from local import environment, main
+from local import environment, main, select_env_file
+
+
+def test_project_env_preferred_with_legacy_fallback(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    legacy = tmp_path / "baseline/embodichain/gen_sim/.env"
+    legacy.parent.mkdir(parents=True)
+    assert select_env_file(root) == root / ".env"
+    legacy.write_text("legacy")
+    assert select_env_file(root) == legacy
+    (root / ".env").write_text("project")
+    assert select_env_file(root) == root / ".env"
+
+
+def test_api_mode_and_effort_can_come_from_dotenv(tmp_path):
+    source = tmp_path / ".env"
+    source.write_text(
+        'OPENAI_API_KEY="secret"\nOPENAI_BASE_URL="https://example.invalid/v1"\nOPENAI_MODEL="openai/gpt-5.6-sol"\nOPENAI_API_MODE="responses"\nOPENAI_REASONING_EFFORT="low"\n'
+    )
+    env = environment("api", env_file=source, inherited={})
+    assert env["ARTICRAFT_COMPATIBLE_API_MODE"] == "responses"
+    assert env["ARTICRAFT_REASONING_EFFORT"] == "low"
+    assert (
+        environment("api", env_file=source, effort="medium", inherited={})[
+            "ARTICRAFT_REASONING_EFFORT"
+        ]
+        == "medium"
+    )
+
+
+def test_benchmark_launcher_sets_runtime_libraries_and_forwards_args(monkeypatch):
+    calls = []
+
+    def execute(executable, command, env):
+        calls.append((executable, command, env))
+        raise RuntimeError("exec intercepted")
+
+    monkeypatch.setattr(
+        os.sys,
+        "argv",
+        [
+            "local.py",
+            "benchmark",
+            "--backend",
+            "api",
+            "--port",
+            "18788",
+            "--run",
+            "--continue-on-failure",
+        ],
+    )
+    monkeypatch.setattr(os, "execve", execute)
+    with pytest.raises(RuntimeError, match="exec intercepted"):
+        main()
+    assert calls[0][1][-5:] == ["api", "--port", "18788", "--run", "--continue-on-failure"]
+    assert calls[0][2]["LD_LIBRARY_PATH"].split(os.pathsep)[0] == str(
+        Path(os.sys.base_prefix) / "lib"
+    )
 
 
 def test_api_loads_only_model_config_and_preserves_source(tmp_path):

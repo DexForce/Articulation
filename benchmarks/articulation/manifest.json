@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "benchmark_name": "articulation_image_e2e_baseline",
+  "seed": 20260824,
+  "execution_order": ["bell", "switch", "stapler", "microwave"],
+  "limits": {"task_timeout_seconds": 2100, "total_timeout_seconds": 7200},
+  "cases": {
+    "bell": {
+      "image": "images/Bell.png",
+      "sha256": "89346eb5667cd64949c4a53a93c1ad3dcf0fd0e64138e42ca37464466325b2ae",
+      "width": 1672,
+      "height": 941,
+      "prompt": "根据参考图片生成一个铃铛",
+      "artifact": "usdc",
+      "expected": {"object_kind": "service_bell", "minimum_prismatic_joints": 1, "minimum_revolute_joints": 0, "minimum_total_joints": 1, "motion": "fixed base with a short vertical press motion"}
+    },
+    "switch": {
+      "image": "images/Switch.png",
+      "sha256": "da533daa1fad0334ecadc5ddf3ffa754dbbe00eca8cf930cbfd503382f5f6a7f",
+      "width": 1672,
+      "height": 941,
+      "prompt": "根据参考图片生成一个开关",
+      "artifact": "usdc",
+      "expected": {"object_kind": "rocker_switch", "minimum_prismatic_joints": 0, "minimum_revolute_joints": 1, "minimum_total_joints": 1, "motion": "fixed housing with a small bidirectional ON/OFF rocker rotation"}
+    },
+    "stapler": {
+      "image": "images/Stapler.png",
+      "sha256": "8dcaf732de9d9e5642b2cc1c38deedfc4fe37ee280b5252592cc36ff2d3114fd",
+      "width": 1432,
+      "height": 791,
+      "prompt": "根据参考图片生成一个可按压的订书机",
+      "artifact": "usdc",
+      "expected": {"object_kind": "stapler", "minimum_prismatic_joints": 0, "minimum_revolute_joints": 1, "minimum_total_joints": 1, "motion": "fixed base with a rear hinge and downward pressing handle"}
+    },
+    "microwave": {
+      "image": "images/Microwave.png",
+      "sha256": "d160e73737a7cacd3d194ba87cef3da441e34ffb047f031c1486abdf2af1be05",
+      "width": 1448,
+      "height": 1086,
+      "prompt": "根据参考图片生成一个微波炉，是抽屉类抽拉式的，然后右侧有两个可以按下的按钮和一个可以旋转的旋钮",
+      "artifact": "usdc",
+      "expected": {"object_kind": "drawer_microwave", "minimum_prismatic_joints": 3, "minimum_revolute_joints": 1, "minimum_total_joints": 4, "motion": "fixed body, one pull-out drawer, two press buttons, and one rotary knob"}
+    }
+  }
+}

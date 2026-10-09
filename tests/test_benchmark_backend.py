@@ -8,6 +8,27 @@ import pytest
 from scripts import benchmark_codex
 
 
+def test_bundled_manifest_inputs_are_self_contained():
+    from PIL import Image
+
+    manifest_path = benchmark_codex.DEFAULT_MANIFEST
+    repo = Path(__file__).resolve().parents[1]
+    assert manifest_path.is_relative_to(repo)
+    data = json.loads(manifest_path.read_text())
+    assert data["execution_order"] == ["bell", "switch", "stapler", "microwave"]
+    for case in data["cases"].values():
+        image = (manifest_path.parent / case["image"]).resolve()
+        assert image.is_relative_to(repo)
+        assert benchmark_codex.sha256(image) == case["sha256"]
+        with Image.open(image) as opened:
+            assert opened.size == (case["width"], case["height"])
+
+
+def test_benchmark_can_run_without_managed_pid_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(benchmark_codex, "ROOT", tmp_path)
+    assert benchmark_codex.backend_runtime_effort("api") == "unknown"
+
+
 @pytest.mark.parametrize(
     "module", ["scripts.compare_sol56", "scripts.benchmark_luna_fast", "scripts.probe_fast_tier"]
 )
