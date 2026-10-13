@@ -1,29 +1,40 @@
-# 四例 Articulation Benchmark
+# Four-Case Articulation Benchmark
 
-本目录包含 Bell、Switch、Stapler、Microwave 的原始参考图片和 manifest。图片未裁剪、压缩或修改；提示词、图片 SHA-256、尺寸、执行顺序、种子元数据、任务时间上限和关节验收条件保留自历史 benchmark。
+This directory contains the original Bell, Switch, Stapler, and Microwave reference images and manifest. Images have not been cropped, recompressed, or edited. The original prompts, SHA-256 hashes, dimensions, execution order, seed metadata, job limits, and joint acceptance criteria are preserved from the historical benchmark.
 
-使用仓库根目录的安装与 API 启动流程后执行：
+## Original Test Inputs
+
+The executable prompts in `manifest.json` intentionally remain in Chinese. They are fixed test data, not untranslated documentation. Translating them would change the model inputs and invalidate an effort-only or backend comparison with the recorded runs. The English descriptions below are for readers; they are not substituted into the verified benchmark:
+
+| Case | English description of the original request |
+| --- | --- |
+| Bell | Generate a bell based on the reference image. |
+| Switch | Generate a switch based on the reference image. |
+| Stapler | Generate a pressable stapler based on the reference image. |
+| Microwave | Generate a drawer-style, pull-out microwave based on the reference image, with two push buttons and one rotary knob on the right. |
+
+After following the repository-root installation and API startup instructions, run:
 
 ```bash
 ".venv/bin/python" "local.py" benchmark --backend api
 ".venv/bin/python" "local.py" benchmark --backend api --run --continue-on-failure
 ```
 
-第一条只做预检。第二条会调用真实模型，每例只提交一次；网络请求的有限恢复不等同于重新提交 HTTP 任务。输出位于 `outputs/benchmarks/`，不纳入 Git。
+The first command only performs preflight checks. The second invokes a real model and submits each case once. Bounded network-request recovery is not HTTP job resubmission. Output is stored in `outputs/benchmarks/` and excluded from Git.
 
-验收检查下载哈希、二进制 USDC、OpenUSD stage、关节数量/限位/刚体目标、已有质量和惯性、有限变换及自包含资源。它不证明图片语义、动力学、全行程碰撞或操作任务成功。模型推理种子未控制，单轮 4/4 不是稳定成功率保证。
+Acceptance checks download hashes, binary USDC, OpenUSD stage validity, joint counts/limits/body targets, authored mass and inertia, finite transforms, and self-contained resources. It does not establish visual semantics, dynamics, full-range collision safety, or manipulation-task success. The inference seed is not controlled, and one `4/4` run is not a stable success-rate guarantee.
 
-## 干净克隆验证
+## Clean-Clone Validation
 
-2026-10-09，从 GitHub 克隆 `dadbe5ac4f272c0503a62129d0bb37d2ff1581ac`，在全新 Conda 和 `.venv` 中执行仓库安装流程、离线 USDC smoke 和 70 项测试，均通过。随后在独立端口运行 API 四例；图片、SDK 模块及输出均来自新克隆，没有借用原工作区的 `.venv` 或 baseline 素材。真实 API 凭证由外部用户配置输入，不随仓库发布。
+On 2026-10-09, revision `dadbe5ac4f272c0503a62129d0bb37d2ff1581ac` was cloned from GitHub and installed into a fresh Conda environment and `.venv`. Installation, the offline USDC smoke check, and 70 tests passed. The four API cases then ran on a separate port. Images, SDK modules, and output all came from that clean clone, without borrowing the original workspace's `.venv` or baseline inputs. Real API credentials were supplied through an external user configuration and were not published.
 
-使用 OrcaRouter `openai/gpt-5.6-sol / low / Responses`，每例提交一次，4/4 完成并通过独立 USDC 静态验收，无 HTTP 重试：
+Using OrcaRouter `openai/gpt-5.6-sol / low / Responses`, each case was submitted once. All four completed and passed independent static USDC acceptance, with no HTTP retries:
 
-| 案例 | 耗时 | 最终编译警告 |
+| Case | Duration | Final compile warnings |
 | --- | --- | --- |
-| Bell | 1 分 46 秒 | 0 |
-| Switch | 3 分 8 秒 | 0 |
-| Stapler | 4 分 34 秒 | 1 |
-| Microwave | 2 分 34 秒 | 2 |
+| Bell | 1 min 46 sec | 0 |
+| Switch | 3 min 8 sec | 0 |
+| Stapler | 4 min 34 sec | 1 |
+| Microwave | 2 min 34 sec | 2 |
 
-总耗时约 12 分 3 秒。警告未通过放宽验收清除；动力学和人工语义验收未运行。费用未核算，不能从 `cost=0` 推断免费。查看 [机器可读验证摘要](results/clean-clone-2026-10-09.json)；它不包含 key、本机路径或生成资产，仅记录测试版本、输入/输出哈希和验收指标。该摘要是一次实测，不是他人账号、不同机器或未来模型版本的成功率承诺。
+Total duration was approximately 12 minutes 3 seconds. Acceptance rules were not loosened to clear warnings. Dynamics and human semantic review were not performed. Billing was not calculated; `cost=0` does not mean free requests. See the [machine-readable validation summary](results/clean-clone-2026-10-09.json). It contains no key, host paths, or generated assets, only the tested revision, input/output hashes, and acceptance metrics. This records one experiment, not a success-rate promise for other accounts, machines, or future model versions.
